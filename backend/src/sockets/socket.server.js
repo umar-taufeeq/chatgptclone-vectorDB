@@ -3,7 +3,9 @@ const cookie = require("cookie")
 const jwt = require("jsonwebtoken")
 const userModel = require("../models/user.model")
 const aiService = require("../services/ai.service");
-const messageModel= require("../models/message.model")
+const messageModel = require("../models/message.model")
+const { createMemory, queryMemory } = require("../services/vector.service");
+
 
 function initSocketServer(httpServer) {
 
@@ -34,14 +36,35 @@ function initSocketServer(httpServer) {
         // console.log("new socket connection :", socket.id);
         // console.log("User connected:",socket.user)
 
-        socket.on("ai-message",async(messagePayload)=>{
+        socket.on("ai-message", async (messagePayload) => {
             console.log(messagePayload)
+            const message = await messageModel.create({
+                chat: messagePayload.chat,
+                user: socket.user._id,
+                content: messagePayload.content,
+                role: "user"
+            })
 
-            await messageModel.create({
-                chat:messagePayload.chat,
-                user:socket.user._id,
-                content:messagePayload.content,
-                role:"user"
+            const vectors = await aiService.generateVectors(messagePayload.content)
+
+            const memory = await queryMemory({
+                queryVector: vectors,
+                limit: 2,
+                metadata: {
+                    // user: socket.user._id
+                }
+            })
+
+            console.log(memory);
+
+            await createMemory({
+                vectors,
+                messageId: message._id,
+                metadata: {
+                    chat: messagePayload.chat,
+                    user: socket.user._id,
+                    text: messagePayload.content
+                }
             })
 
             // const chatHistory =await messageModel.find({
@@ -49,31 +72,76 @@ function initSocketServer(httpServer) {
             // })
 
             //limitations of chat histor of short time
-                const chatHistory =(await messageModel.find({
-                chat:messagePayload.chat
-            }).sort({createdAt:-1}).limit(20).lean()).reverse()
+            const chatHistory = (await messageModel.find({
+                chat: messagePayload.chat
+            }).sort({ createdAt: -1 }).limit(20).lean()).reverse()
 
-            console.log("chat histor",chatHistory);
+            console.log("chat history", chatHistory);
 
-            
 
-            const response = await aiService.generateResponse(chatHistory.map(item => {
-                return{
-                    role:item.role,
-                    parts:[{text: item.content}]
+             const stm = chatHistory.map(item => {
+                return {
+                    role: item.role,
+                    parts: [ { text: item.content } ]
                 }
-            }))
-
-              await messageModel.create({
-                chat:messagePayload.chat,
-                user:socket.user._id,
-                content:response,
-                role:"model"
             })
 
-            socket.emit('ai-response',{
-                content:response,
-                chat:messagePayload.chat
+            const ltm = [
+                {
+                    role: "user",
+                    parts: [ {
+                        text: `
+
+                        these are some previous messages from the chat, use them to generate a response
+
+                        ${memory.map(item => item.metadata.text).join("\n")}
+                        
+                        ` } ]
+                }
+            ]
+
+            console.log(ltm[ 0 ])
+            console.log(stm)
+
+
+
+
+            //this was old way of using only stm short term memory
+
+            // const response = await aiService.generateResponse(chatHistory.map(item => {
+            //     return {
+            //         role: item.role,
+            //         parts: [{ text: item.content }]
+            //     }
+            // }))
+
+
+            // this is new with stm ltm long term memory RAG concept
+
+             const response = await aiService.generateResponse([ ...ltm, ...stm ])
+
+            const responseMessage = await messageModel.create({
+                chat: messagePayload.chat,
+                user: socket.user._id,
+                content: response,
+                role: "model"
+            })
+
+            const responseVectors = await aiService.generateVectors(response);
+
+            await createMemory({
+                vectors: responseVectors,
+                messageId: responseMessage._id,
+                metadata: {
+                    chat: messagePayload.chat,
+                    user: socket.user._id,
+                    text: response
+                }
+            })
+
+            socket.emit('ai-response', {
+                content: response,
+                chat: messagePayload.chat
             })
         })
 
