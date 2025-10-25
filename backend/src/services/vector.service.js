@@ -8,13 +8,12 @@ const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
 
 const cohortChatGptIndex= pc.Index('chatgpt-clone');
 
-async function createMemory({vectors,metadata,messageId}) {
-    
-    await cohortChatGptIndex.upsert([{
-        id:messageId,
-        values:vectors,
+async function createMemory({ vectors, metadata, messageId }) {
+    await cohortChatGptIndex.upsert([ {
+        id: messageId,
+        values: vectors,
         metadata
-    }])
+    } ])
 }
 
 async function queryMemory({queryVector,limit = 5, metadata }) {
@@ -28,4 +27,4 @@ async function queryMemory({queryVector,limit = 5, metadata }) {
     return data.matches
 }
 
-module.exports = { createMemory,queryMemory}
+module.exports = {createMemory, queryMemory}
