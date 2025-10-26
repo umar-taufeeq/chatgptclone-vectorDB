@@ -10,5 +10,5 @@ initSocketServer(httpServer);
 
 
 httpServer.listen(3000,()=>{
-    console.log("server is running on port no 4000")
+    console.log("server is running on port no 3000")
 })

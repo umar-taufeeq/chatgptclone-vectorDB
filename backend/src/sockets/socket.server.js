@@ -9,7 +9,14 @@ const { createMemory, queryMemory } = require("../services/vector.service");
 
 function initSocketServer(httpServer) {
 
-    const io = new Server(httpServer, {})
+    // const io = new Server(httpServer, {})
+    const io = new Server(httpServer, {
+        cors: {
+            origin: "http://localhost:5173",
+            allowedHeaders: [ "Content-Type", "Authorization" ],
+            credentials: true
+        }
+    })
 
     // io.use it is socket.io middleware
     io.use(async (socket, next) => {
